@@ -17,7 +17,7 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ botProfile, theme }: ChatInterfaceProps) {
   const [inputMessage, setInputMessage] = useState("");
-  const { messages, sendMessage, isLoading } = useChat(botProfile.id);
+  const { messages, sendMessage, isLoading } = useChat(botProfile.id, botProfile);
   const { t } = useLanguage();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 

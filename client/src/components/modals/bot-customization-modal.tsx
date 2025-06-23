@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/useLanguage";
-import { apiRequest } from "@/lib/queryClient";
-import { isUnauthorizedError } from "@/lib/authUtils";
+import { useBotProfiles } from "@/hooks/useLocalStorage";
 import { insertBotProfileSchema } from "@shared/schema";
 import type { BotProfile } from "@shared/schema";
 import type { Theme } from "@/components/ui/theme-selector";
@@ -42,7 +40,7 @@ export function BotCustomizationModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { t } = useLanguage();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const { createBot, updateBot } = useBotProfiles();
 
   const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -108,44 +106,44 @@ export function BotCustomizationModal({
     }
   }, [botProfile, form]);
 
-  const mutation = useMutation({
-    mutationFn: async (data: z.infer<typeof formSchema>) => {
-      const url = botProfile ? `/api/bot-profiles/${botProfile.id}` : '/api/bot-profiles';
-      const method = botProfile ? 'PUT' : 'POST';
-      return await apiRequest(method, url, data);
-    },
-    onSuccess: async (response) => {
-      const updatedProfile = await response.json();
-      onSave?.(updatedProfile);
-      queryClient.invalidateQueries({ queryKey: ['/api/bot-profiles'] });
-      toast({
-        title: "Success",
-        description: botProfile ? "Bot profile updated successfully!" : "Bot profile created successfully!",
-      });
-      onOpenChange(false);
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
+  const onSubmit = (data: z.infer<typeof formSchema>) => {
+    try {
+      // Use avatar file data if uploaded, otherwise use URL
+      const finalData = {
+        ...data,
+        avatarUrl: avatarPreview || data.avatarUrl || '',
+      };
+      
+      let savedProfile: BotProfile;
+      
+      if (botProfile) {
+        // Update existing bot
+        savedProfile = updateBot(botProfile.id, finalData) as BotProfile;
+      } else {
+        // Create new bot
+        savedProfile = createBot(finalData);
       }
+      
+      if (savedProfile) {
+        onSave?.(savedProfile);
+        toast({
+          title: "Success",
+          description: botProfile ? "Bot profile updated successfully!" : "Bot profile created successfully!",
+        });
+        onOpenChange(false);
+        // Reset form and avatar preview
+        setAvatarPreview(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
+    } catch (error) {
       toast({
         title: "Error",
         description: "Failed to save bot profile. Please try again.",
         variant: "destructive",
       });
-    },
-  });
-
-  const onSubmit = (data: z.infer<typeof formSchema>) => {
-    mutation.mutate(data);
+    }
   };
 
   const getThemeStyles = (theme: Theme) => {
@@ -302,29 +300,73 @@ export function BotCustomizationModal({
               )}
             />
 
-            {/* Avatar URL */}
+            {/* Avatar Upload */}
             <FormField
               control={form.control}
               name="avatarUrl"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('customize.avatar')}</FormLabel>
+                  <FormLabel>Avatar</FormLabel>
                   <div className="flex items-center space-x-4">
-                    <img 
-                      src={field.value || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=100&h=100'} 
-                      alt="Avatar Preview" 
-                      className="w-16 h-16 rounded-full object-cover" 
-                    />
-                    <div className="flex-1">
+                    <Avatar className="w-16 h-16">
+                      <AvatarImage 
+                        src={avatarPreview || field.value || ''} 
+                        alt="Avatar Preview" 
+                      />
+                      <AvatarFallback>
+                        {form.watch('name')?.charAt(0)?.toUpperCase() || 'A'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex space-x-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center space-x-2"
+                        >
+                          <Upload size={16} />
+                          <span>Upload Image</span>
+                        </Button>
+                        {(avatarPreview || field.value) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={removeAvatar}
+                            className="flex items-center space-x-2"
+                          >
+                            <X size={16} />
+                            <span>Remove</span>
+                          </Button>
+                        )}
+                      </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarUpload}
+                        className="hidden"
+                      />
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="https://example.com/avatar.jpg"
+                          placeholder="Or paste image URL"
                           className="rounded-lg" 
+                          onChange={(e) => {
+                            field.onChange(e);
+                            if (e.target.value && !avatarPreview) {
+                              // Clear file input if URL is entered
+                              if (fileInputRef.current) {
+                                fileInputRef.current.value = '';
+                              }
+                            }
+                          }}
                         />
                       </FormControl>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {t('customize.image-format')}
+                      <p className="text-xs text-gray-500">
+                        JPG, PNG up to 2MB
                       </p>
                     </div>
                   </div>
@@ -356,10 +398,9 @@ export function BotCustomizationModal({
             <div className="flex space-x-3 pt-4">
               <Button
                 type="submit"
-                disabled={mutation.isPending}
                 className="flex-1 bg-gradient-to-r from-indigo-500 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg transition-all"
               >
-                {mutation.isPending ? t('common.loading') : t('customize.save')}
+                Save Changes
               </Button>
               <Button
                 type="button"

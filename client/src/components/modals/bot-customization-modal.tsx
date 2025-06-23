@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/useLanguage";
 import { apiRequest } from "@/lib/queryClient";
@@ -26,6 +28,7 @@ interface BotCustomizationModalProps {
 
 const formSchema = insertBotProfileSchema.extend({
   theme: z.enum(['wallflower', 'comic', 'neutral']),
+  avatarFile: z.string().optional(),
 });
 
 export function BotCustomizationModal({ 
@@ -35,9 +38,47 @@ export function BotCustomizationModal({
   onSave
 }: BotCustomizationModalProps) {
   const [selectedTheme, setSelectedTheme] = useState<Theme>('wallflower');
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { t } = useLanguage();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          title: "File too large",
+          description: "Please select an image under 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target?.result as string;
+        setAvatarPreview(base64);
+        form.setValue('avatarFile', base64);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      toast({
+        title: "Invalid file type",
+        description: "Please select an image file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const removeAvatar = () => {
+    setAvatarPreview(null);
+    form.setValue('avatarFile', undefined);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const form = useForm({
     resolver: zodResolver(formSchema),

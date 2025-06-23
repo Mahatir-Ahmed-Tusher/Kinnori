@@ -43,6 +43,7 @@ export const botProfiles = pgTable("bot_profiles", {
   tone: varchar("tone").notNull(),
   backstory: text("backstory"),
   avatarUrl: varchar("avatar_url"),
+  avatarFile: text("avatar_file"), // Store base64 encoded image
   theme: varchar("theme").notNull().default("wallflower"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

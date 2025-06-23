@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { BotProfile, ChatMessage } from "@shared/schema";
 
 // Using Gemini 2.5 Flash model for AI conversations
-const genai = new GoogleGenAI(process.env.GEMINI_API_KEY || "");
+const genai = new GoogleGenAI(process.env.GOOGLE_AI_API_KEY || "");
 
 function detectLanguage(text: string): 'english' | 'bengali' | 'banglish' {
   // Simple language detection

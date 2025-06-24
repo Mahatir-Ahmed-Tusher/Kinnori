@@ -5,9 +5,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { isUnauthorizedError } from "@/lib/authUtils";
 
 interface SettingsModalProps {
   open: boolean;
@@ -20,39 +17,20 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const [showTypingIndicators, setShowTypingIndicators] = useState(true);
   const [soundNotifications, setSoundNotifications] = useState(false);
 
-  const clearChatsMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest('DELETE', '/api/chat-messages');
-    },
-    onSuccess: () => {
+  const handleClearAllData = () => {
+    if (confirm("Are you sure you want to clear all data? This will delete all your companions and conversations. This action cannot be undone.")) {
+      // Clear all localStorage data
+      localStorage.clear();
+      
       toast({
         title: "Success",
-        description: "All conversations have been cleared.",
+        description: "All data has been cleared. The page will reload.",
       });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to clear conversations. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleClearConversations = () => {
-    if (confirm("Are you sure you want to clear all conversations? This action cannot be undone.")) {
-      clearChatsMutation.mutate();
+      
+      // Reload the page to reset the application state
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     }
   };
 
@@ -140,26 +118,25 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             <div className="space-y-2">
               <Button
                 variant="outline"
-                className="w-full justify-start rounded-xl"
-                onClick={() => {
-                  // TODO: Implement export functionality
-                  toast({
-                    title: "Coming Soon",
-                    description: "Export functionality will be available soon.",
-                  });
-                }}
-              >
-                {t('settings.export-history')}
-              </Button>
-              <Button
-                variant="outline"
                 className="w-full justify-start rounded-xl text-red-600 border-red-200 hover:bg-red-50"
-                onClick={handleClearConversations}
-                disabled={clearChatsMutation.isPending}
+                onClick={handleClearAllData}
               >
-                {clearChatsMutation.isPending ? t('common.loading') : t('settings.clear-conversations')}
+                Clear All Data
               </Button>
+              <p className="text-xs text-gray-500">
+                This will delete all companions, conversations, and settings stored locally.
+              </p>
             </div>
+          </div>
+
+          {/* API Key Info */}
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+            <h4 className="text-sm font-medium mb-2 text-yellow-800">
+              API Configuration
+            </h4>
+            <p className="text-xs text-yellow-700">
+              Make sure your Gemini API key is set in the environment variables (VITE_GEMINI_API_KEY) for the AI to work properly.
+            </p>
           </div>
         </div>
 

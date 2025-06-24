@@ -8,12 +8,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useBotProfiles } from "@/hooks/useLocalStorage";
-import { insertBotProfileSchema } from "@shared/schema";
-import type { BotProfile } from "@shared/schema";
+import { insertBotProfileSchema } from "@/types/schema";
+import type { BotProfile } from "@/types/schema";
 import type { Theme } from "@/components/ui/theme-selector";
 import { z } from "zod";
 
@@ -27,6 +28,9 @@ interface BotCustomizationModalProps {
 const formSchema = insertBotProfileSchema.extend({
   theme: z.enum(['wallflower', 'comic', 'neutral']),
   avatarFile: z.string().optional(),
+  specificTreatment: z.string().optional(),
+  bengaliAddressing: z.enum(['tui', 'tumi', 'apni']).optional(),
+  canUseTui: z.boolean().optional(),
 });
 
 export function BotCustomizationModal({ 
@@ -38,7 +42,7 @@ export function BotCustomizationModal({
   const [selectedTheme, setSelectedTheme] = useState<Theme>('wallflower');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { toast } = useToast();
   const { createBot, updateBot } = useBotProfiles();
 
@@ -59,6 +63,7 @@ export function BotCustomizationModal({
         const base64 = e.target?.result as string;
         setAvatarPreview(base64);
         form.setValue('avatarFile', base64);
+        form.setValue('avatarUrl', ''); // Clear URL when file is uploaded
       };
       reader.readAsDataURL(file);
     } else {
@@ -72,7 +77,8 @@ export function BotCustomizationModal({
 
   const removeAvatar = () => {
     setAvatarPreview(null);
-    form.setValue('avatarFile', undefined);
+    form.setValue('avatarFile', '');
+    form.setValue('avatarUrl', '');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -87,7 +93,11 @@ export function BotCustomizationModal({
       tone: botProfile?.tone || 'empathetic',
       backstory: botProfile?.backstory || '',
       avatarUrl: botProfile?.avatarUrl || '',
+      avatarFile: botProfile?.avatarFile || '',
       theme: (botProfile?.theme as Theme) || 'wallflower',
+      specificTreatment: (botProfile as any)?.specificTreatment || '',
+      bengaliAddressing: (botProfile as any)?.bengaliAddressing || 'tumi',
+      canUseTui: (botProfile as any)?.canUseTui || false,
     },
   });
 
@@ -100,9 +110,20 @@ export function BotCustomizationModal({
         tone: botProfile.tone,
         backstory: botProfile.backstory || '',
         avatarUrl: botProfile.avatarUrl || '',
+        avatarFile: botProfile.avatarFile || '',
         theme: (botProfile.theme as Theme) || 'wallflower',
+        specificTreatment: (botProfile as any)?.specificTreatment || '',
+        bengaliAddressing: (botProfile as any)?.bengaliAddressing || 'tumi',
+        canUseTui: (botProfile as any)?.canUseTui || false,
       });
       setSelectedTheme((botProfile.theme as Theme) || 'wallflower');
+      
+      // Set avatar preview if there's an avatar file or URL
+      if (botProfile.avatarFile) {
+        setAvatarPreview(botProfile.avatarFile);
+      } else if (botProfile.avatarUrl) {
+        setAvatarPreview(botProfile.avatarUrl);
+      }
     }
   }, [botProfile, form]);
 
@@ -111,7 +132,8 @@ export function BotCustomizationModal({
       // Use avatar file data if uploaded, otherwise use URL
       const finalData = {
         ...data,
-        avatarUrl: avatarPreview || data.avatarUrl || '',
+        avatarUrl: data.avatarFile ? '' : data.avatarUrl || '',
+        avatarFile: data.avatarFile || '',
       };
       
       let savedProfile: BotProfile;
@@ -128,7 +150,7 @@ export function BotCustomizationModal({
         onSave?.(savedProfile);
         toast({
           title: "Success",
-          description: botProfile ? "Bot profile updated successfully!" : "Bot profile created successfully!",
+          description: botProfile ? "Companion updated successfully!" : "Companion created successfully!",
         });
         onOpenChange(false);
         // Reset form and avatar preview
@@ -140,10 +162,17 @@ export function BotCustomizationModal({
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to save bot profile. Please try again.",
+        description: "Failed to save companion. Please try again.",
         variant: "destructive",
       });
     }
+  };
+
+  const getCurrentAvatar = () => {
+    if (avatarPreview) return avatarPreview;
+    if (form.watch('avatarFile')) return form.watch('avatarFile');
+    if (form.watch('avatarUrl')) return form.watch('avatarUrl');
+    return '';
   };
 
   const getThemeStyles = (theme: Theme) => {
@@ -159,11 +188,14 @@ export function BotCustomizationModal({
     }
   };
 
+  const selectedRole = form.watch('role');
+  const isFriendRole = selectedRole === 'friend';
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold">
+          <DialogTitle className="text-2xl font-bold font-bengali">
             {t('customize.title')}
           </DialogTitle>
         </DialogHeader>
@@ -176,9 +208,9 @@ export function BotCustomizationModal({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('customize.name')}</FormLabel>
+                  <FormLabel className="font-bengali">{t('customize.name')}</FormLabel>
                   <FormControl>
-                    <Input {...field} className="rounded-xl" />
+                    <Input {...field} className="rounded-xl font-bengali" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -191,7 +223,7 @@ export function BotCustomizationModal({
               name="gender"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('customize.gender')}</FormLabel>
+                  <FormLabel className="font-bengali">{t('customize.gender')}</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger className="rounded-xl">
@@ -215,7 +247,7 @@ export function BotCustomizationModal({
               name="role"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('customize.role')}</FormLabel>
+                  <FormLabel className="font-bengali">{t('customize.role')}</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger className="rounded-xl">
@@ -228,6 +260,9 @@ export function BotCustomizationModal({
                       <SelectItem value="therapist">{t('customize.role.therapist')}</SelectItem>
                       <SelectItem value="mentor">{t('customize.role.mentor')}</SelectItem>
                       <SelectItem value="family-member">{t('customize.role.family-member')}</SelectItem>
+                      <SelectItem value="acquaintance">
+                        {language === 'bn' ? 'পরিচিতজন' : 'Acquaintance'}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -235,13 +270,81 @@ export function BotCustomizationModal({
               )}
             />
 
+            {/* Bengali Addressing */}
+            {(language === 'bn' || language === 'en') && (
+              <div className="space-y-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                <h4 className="font-medium text-blue-900 font-bengali">
+                  {language === 'bn' ? 'বাংলা সম্বোধন' : 'Bengali Addressing'}
+                </h4>
+                
+                {isFriendRole ? (
+                  <FormField
+                    control={form.control}
+                    name="canUseTui"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="font-bengali">
+                            {language === 'bn' 
+                              ? 'কিন্নোরি কি আপনাকে "তুই" বলে ডাকতে পারে?' 
+                              : 'Can Kinnori address you as "তুই" (tui) in Bangla or Banglish?'
+                            }
+                          </FormLabel>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="bengaliAddressing"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="font-bengali">
+                          {language === 'bn' 
+                            ? 'কিন্নোরি আপনাকে কীভাবে সম্বোধন করবে?' 
+                            : 'How should Kinnori address you in Bengali/Banglish?'
+                          }
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="rounded-xl">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="apni">
+                              <span className="font-bengali">আপনি (Apni) - Formal</span>
+                            </SelectItem>
+                            <SelectItem value="tumi">
+                              <span className="font-bengali">তুমি (Tumi) - Semi-formal</span>
+                            </SelectItem>
+                            <SelectItem value="tui">
+                              <span className="font-bengali">তুই (Tui) - Informal</span>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+            )}
+
             {/* Tone */}
             <FormField
               control={form.control}
               name="tone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('customize.tone')}</FormLabel>
+                  <FormLabel className="font-bengali">{t('customize.tone')}</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger className="rounded-xl">
@@ -267,7 +370,7 @@ export function BotCustomizationModal({
               name="theme"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('customize.theme')}</FormLabel>
+                  <FormLabel className="font-bengali">{t('customize.theme')}</FormLabel>
                   <div className="grid grid-cols-3 gap-3">
                     {(['wallflower', 'comic', 'neutral'] as Theme[]).map((theme) => (
                       <Button
@@ -306,14 +409,14 @@ export function BotCustomizationModal({
               name="avatarUrl"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Avatar</FormLabel>
+                  <FormLabel className="font-bengali">Avatar</FormLabel>
                   <div className="flex items-center space-x-4">
                     <Avatar className="w-16 h-16">
                       <AvatarImage 
-                        src={avatarPreview || field.value || ''} 
+                        src={getCurrentAvatar()} 
                         alt="Avatar Preview" 
                       />
-                      <AvatarFallback>
+                      <AvatarFallback className="bg-gradient-to-br from-indigo-400 to-pink-400 text-white">
                         {form.watch('name')?.charAt(0)?.toUpperCase() || 'A'}
                       </AvatarFallback>
                     </Avatar>
@@ -329,7 +432,7 @@ export function BotCustomizationModal({
                           <Upload size={16} />
                           <span>Upload Image</span>
                         </Button>
-                        {(avatarPreview || field.value) && (
+                        {(avatarPreview || field.value || form.watch('avatarFile')) && (
                           <Button
                             type="button"
                             variant="outline"
@@ -353,20 +456,22 @@ export function BotCustomizationModal({
                         <Input 
                           {...field} 
                           placeholder="Or paste image URL"
-                          className="rounded-lg" 
+                          className="rounded-lg font-bengali" 
                           onChange={(e) => {
                             field.onChange(e);
-                            if (e.target.value && !avatarPreview) {
+                            if (e.target.value && !form.watch('avatarFile')) {
+                              setAvatarPreview(e.target.value);
                               // Clear file input if URL is entered
                               if (fileInputRef.current) {
                                 fileInputRef.current.value = '';
                               }
+                              form.setValue('avatarFile', '');
                             }
                           }}
                         />
                       </FormControl>
                       <p className="text-xs text-gray-500">
-                        JPG, PNG up to 2MB
+                        JPG, PNG up to 5MB
                       </p>
                     </div>
                   </div>
@@ -381,12 +486,12 @@ export function BotCustomizationModal({
               name="backstory"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('customize.backstory')}</FormLabel>
+                  <FormLabel className="font-bengali">{t('customize.backstory')}</FormLabel>
                   <FormControl>
                     <Textarea 
                       {...field} 
                       rows={4}
-                      className="rounded-xl resize-none"
+                      className="rounded-xl resize-none font-bengali"
                       placeholder={t('customize.backstory.placeholder')}
                     />
                   </FormControl>
@@ -395,10 +500,41 @@ export function BotCustomizationModal({
               )}
             />
 
+            {/* Specific Treatment */}
+            <FormField
+              control={form.control}
+              name="specificTreatment"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-bengali">
+                    {language === 'bn' 
+                      ? 'বিশেষভাবে, আপনি চান এই ভূমিকা আপনার সাথে কেমন আচরণ করুক?' 
+                      : 'Specifically, how do you want this role to treat you?'
+                    }
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      {...field} 
+                      rows={3}
+                      className="rounded-xl resize-none font-bengali"
+                      placeholder={language === 'bn' 
+                        ? 'উদাহরণ: আমি চাই আমার বন্ধু আমার সাথে খুব স্বাচ্ছন্দ্যে কথা বলুক এবং আমাকে উৎসাহ দিক...' 
+                        : 'Example: I want my friend to be very casual with me and encourage me when I\'m down...'
+                      }
+                    />
+                  </FormControl>
+                  <p className="text-xs text-gray-500 font-bengali">
+                    {language === 'bn' ? 'ঐচ্ছিক - এটি AI কে আরও ভালো প্রতিক্রিয়া দিতে সাহায্য করবে' : 'Optional - This helps the AI give better responses'}
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className="flex space-x-3 pt-4">
               <Button
                 type="submit"
-                className="flex-1 bg-gradient-to-r from-indigo-500 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg transition-all"
+                className="flex-1 bg-gradient-to-r from-indigo-500 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg transition-all font-bengali"
               >
                 Save Changes
               </Button>
@@ -406,7 +542,7 @@ export function BotCustomizationModal({
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                className="rounded-xl font-medium"
+                className="rounded-xl font-medium font-bengali"
               >
                 {t('customize.cancel')}
               </Button>

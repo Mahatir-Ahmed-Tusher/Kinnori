@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { BotProfile, ChatMessage } from '@shared/schema';
+import type { BotProfile, ChatMessage } from '@/types/schema';
 
 // Local storage keys
 const STORAGE_KEYS = {
@@ -17,7 +17,7 @@ function generateId(): string {
 export function useBotProfiles() {
   const [botProfiles, setBotProfiles] = useState<BotProfile[]>(() => {
     try {
-      const stored = sessionStorage.getItem(STORAGE_KEYS.BOT_PROFILES);
+      const stored = localStorage.getItem(STORAGE_KEYS.BOT_PROFILES);
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
@@ -26,14 +26,13 @@ export function useBotProfiles() {
 
   const saveBotProfiles = (profiles: BotProfile[]) => {
     setBotProfiles(profiles);
-    sessionStorage.setItem(STORAGE_KEYS.BOT_PROFILES, JSON.stringify(profiles));
+    localStorage.setItem(STORAGE_KEYS.BOT_PROFILES, JSON.stringify(profiles));
   };
 
-  const createBot = (botData: Omit<BotProfile, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): BotProfile => {
+  const createBot = (botData: Omit<BotProfile, 'id' | 'createdAt' | 'updatedAt'>): BotProfile => {
     const newBot: BotProfile = {
       ...botData,
       id: generateId(),
-      userId: 'local-user',
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -65,7 +64,7 @@ export function useBotProfiles() {
     
     // Also clear chat messages for this bot
     const chatKey = `${STORAGE_KEYS.CHAT_MESSAGES}_${id}`;
-    sessionStorage.removeItem(chatKey);
+    localStorage.removeItem(chatKey);
   };
 
   return {
@@ -76,43 +75,61 @@ export function useBotProfiles() {
   };
 }
 
-// Chat messages management
+// CRITICAL FIX: Chat messages management with proper chronological ordering
 export function useChatMessages(botProfileId: string) {
   const chatKey = `${STORAGE_KEYS.CHAT_MESSAGES}_${botProfileId}`;
   
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
-      const stored = sessionStorage.getItem(chatKey);
-      return stored ? JSON.parse(stored) : [];
+      const stored = localStorage.getItem(chatKey);
+      if (!stored) return [];
+      
+      const parsedMessages = JSON.parse(stored);
+      
+      // CRITICAL: Sort by timestamp to ensure chronological order (oldest first)
+      return parsedMessages.sort((a: ChatMessage, b: ChatMessage) => {
+        const timeA = new Date(a.timestamp).getTime();
+        const timeB = new Date(b.timestamp).getTime();
+        return timeA - timeB; // Ascending order (oldest to newest)
+      });
     } catch {
       return [];
     }
   });
 
   const saveMessages = (newMessages: ChatMessage[]) => {
-    setMessages(newMessages);
-    sessionStorage.setItem(chatKey, JSON.stringify(newMessages));
+    // CRITICAL: Always sort chronologically before saving and setting state
+    const sortedMessages = [...newMessages].sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      return timeA - timeB; // Ascending order (oldest to newest)
+    });
+    
+    setMessages(sortedMessages);
+    localStorage.setItem(chatKey, JSON.stringify(sortedMessages));
   };
 
-  const addMessage = (messageData: Omit<ChatMessage, 'id' | 'createdAt'>): ChatMessage => {
+  const addMessage = (messageData: Omit<ChatMessage, 'id' | 'timestamp'>): ChatMessage => {
     const newMessage: ChatMessage = {
       ...messageData,
       id: generateId(),
-      createdAt: new Date(),
+      timestamp: new Date(), // This ensures proper chronological ordering
     };
 
+    // CRITICAL: Add new message and maintain chronological order
     const updatedMessages = [...messages, newMessage];
-    saveMessages(updatedMessages);
+    saveMessages(updatedMessages); // This will automatically sort chronologically
+    
     return newMessage;
   };
 
   const clearMessages = () => {
     setMessages([]);
-    sessionStorage.removeItem(chatKey);
+    localStorage.removeItem(chatKey);
   };
 
   return {
-    messages,
+    messages, // These are now guaranteed to be in chronological order (sender ↔ receiver ↔ sender)
     addMessage,
     clearMessages,
   };
@@ -122,7 +139,7 @@ export function useChatMessages(botProfileId: string) {
 export function useTheme() {
   const [theme, setTheme] = useState<string>(() => {
     try {
-      return sessionStorage.getItem(STORAGE_KEYS.CURRENT_THEME) || 'wallflower';
+      return localStorage.getItem(STORAGE_KEYS.CURRENT_THEME) || 'wallflower';
     } catch {
       return 'wallflower';
     }
@@ -130,7 +147,7 @@ export function useTheme() {
 
   const updateTheme = (newTheme: string) => {
     setTheme(newTheme);
-    sessionStorage.setItem(STORAGE_KEYS.CURRENT_THEME, newTheme);
+    localStorage.setItem(STORAGE_KEYS.CURRENT_THEME, newTheme);
   };
 
   return { theme, updateTheme };

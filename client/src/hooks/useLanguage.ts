@@ -24,11 +24,33 @@ export function LanguageProvider({ children }: { children: ReactNode }): React.J
   useEffect(() => {
     localStorage.setItem('kinnori-language', language);
     
-    // Apply Bengali font to body when Bengali is selected
+    // Apply Bengali font to body and all elements when Bengali is selected
+    const body = document.body;
+    const html = document.documentElement;
+    
     if (language === 'bn') {
-      document.body.classList.add('font-bengali');
+      body.classList.add('font-bengali');
+      html.setAttribute('lang', 'bn');
+      // Force Bengali font on all elements
+      const style = document.createElement('style');
+      style.textContent = `
+        * {
+          font-family: 'Hind Siliguri', system-ui, sans-serif !important;
+        }
+      `;
+      style.id = 'bengali-font-override';
+      
+      // Remove existing override if any
+      const existing = document.getElementById('bengali-font-override');
+      if (existing) existing.remove();
+      
+      document.head.appendChild(style);
     } else {
-      document.body.classList.remove('font-bengali');
+      body.classList.remove('font-bengali');
+      html.setAttribute('lang', 'en');
+      // Remove Bengali font override
+      const existing = document.getElementById('bengali-font-override');
+      if (existing) existing.remove();
     }
   }, [language]);
 

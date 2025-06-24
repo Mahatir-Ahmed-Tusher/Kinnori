@@ -1,5 +1,8 @@
 # Kinnori - AI Emotional Support Companion
 
+![kinnori-banner](https://github.com/user-attachments/assets/61b329b0-756d-4e07-9084-dc595acf1740)
+
+
 A personalized AI emotional support companion application that provides empathetic conversations in multiple languages with customizable personalities and beautiful themes.
 
 ## 🌟 Features

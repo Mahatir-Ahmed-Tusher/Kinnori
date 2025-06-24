@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { BotProfile, ChatMessage } from "@/types/schema";
 
 function detectLanguage(text: string): 'english' | 'bengali' | 'banglish' {
@@ -128,15 +127,21 @@ ${languageInstruction}
 // Test API connectivity
 async function testAPIConnection(apiKey: string): Promise<boolean> {
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const response = await fetch('https://openrouter.ai/api/v1/models', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
     
-    // Simple test request
-    const result = await model.generateContent("Hello");
-    await result.response;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
     return true;
   } catch (error) {
-    console.error("API connectivity test failed:", error);
+    console.error("OpenRouter API connectivity test failed:", error);
     return false;
   }
 }
@@ -148,56 +153,70 @@ export async function generateAIResponse(
 ): Promise<string> {
   try {
     // Check if API key is configured and not a placeholder
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
     if (!apiKey || 
-        apiKey === "YOUR_NEW_API_KEY_HERE" || 
+        apiKey === "YOUR_OPENROUTER_API_KEY_HERE" || 
         apiKey.trim() === "") {
-      throw new Error("Please configure your Gemini API key in the .env file. Get your API key from: https://aistudio.google.com/app/apikey");
+      throw new Error("Please configure your OpenRouter API key in the .env file. Get your API key from: https://openrouter.ai/keys");
     }
 
-    console.log("Attempting to connect to Gemini API...");
+    console.log("Attempting to connect to OpenRouter API...");
     
+    // Test API connectivity
+    const isConnected = await testAPIConnection(apiKey);
+    if (!isConnected) {
+      throw new Error("Failed to connect to OpenRouter API. Please check your API key and internet connection.");
+    }
+
     const detectedLanguage = detectLanguage(userMessage);
     const systemPrompt = buildSystemPrompt(botProfile, detectedLanguage);
     
-    // Build conversation history for Gemini
-    let conversationContext = systemPrompt + "\n\nConversation History:\n";
+    // Build conversation history for OpenRouter
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...chatHistory.slice(-8).map(msg => ({
+        role: msg.sender === "user" ? "user" : "assistant",
+        content: msg.message
+      })),
+      { role: "user", content: userMessage }
+    ];
     
-    // Add recent chat history for context (last 8 messages)
-    chatHistory.slice(-8).forEach(msg => {
-      const role = msg.sender === "user" ? "User" : botProfile.name;
-      conversationContext += `${role}: ${msg.message}\n`;
-    });
-    
-    // Add current user message
-    conversationContext += `User: ${userMessage}\n${botProfile.name}:`;
-    
-    const generationConfig = {
-      temperature: 0.9,        // Higher creativity for more natural responses
-      topP: 0.95,             // High diversity in responses
-      topK: 40,               // Consider top 40 tokens
-      maxOutputTokens: 1024,   // Shorter responses for chat
-      responseMimeType: "text/plain",
+    const requestBody = {
+      model: "deepseek/deepseek-r1-0528:free",
+      messages,
+      temperature: 0.9,
+      top_p: 0.95,
+      max_tokens: 1024
     };
-    
-    // Initialize Gemini AI with enhanced error handling
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      generationConfig,
-    });
     
     // Add timeout to the request
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
     });
     
-    const generatePromise = model.generateContent(conversationContext);
+    const fetchPromise = fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Emotional Support AI'
+      },
+      body: JSON.stringify(requestBody)
+    });
     
-    const result = await Promise.race([generatePromise, timeoutPromise]) as any;
-    const response = await result.response;
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    if (!(response instanceof Response)) {
+      throw new Error('Invalid response from API');
+    }
     
-    const aiResponse = response.text() || "I'm here for you. Could you tell me more about how you're feeling?";
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const aiResponse = data.choices?.[0]?.message?.content || 
+      "I'm here for you. Could you tell me more about how you're feeling? 😊";
     
     // Validate response language matches input language
     const responseLanguage = detectLanguage(aiResponse);
@@ -212,13 +231,13 @@ export async function generateAIResponse(
     console.error("Error generating AI response:", error);
     
     // Enhanced error handling for different types of API errors
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
     
     // Check if it's an API key issue
     if (!apiKey || 
-        apiKey === "YOUR_NEW_API_KEY_HERE" || 
+        apiKey === "YOUR_OPENROUTER_API_KEY_HERE" || 
         apiKey.trim() === "") {
-      throw new Error("⚠️ API Configuration Required: Please add your Gemini API key to continue chatting. Get your free API key from Google AI Studio.");
+      throw new Error("⚠️ API Configuration Required: Please add your OpenRouter API key to continue chatting. Get your free API key from https://openrouter.ai/keys.");
     }
     
     // Handle specific API errors
@@ -231,35 +250,40 @@ export async function generateAIResponse(
       }
       
       // API key related errors
-      if (errorMessage.includes('api key') || errorMessage.includes('authentication') || errorMessage.includes('unauthorized') || errorMessage.includes('403')) {
-        throw new Error("⚠️ API Key Error: Your Gemini API key appears to be invalid or expired. Please verify your API key at https://aistudio.google.com/app/apikey and update your .env file.");
+      if (errorMessage.includes('api key') || 
+          errorMessage.includes('authentication') || 
+          errorMessage.includes('unauthorized') || 
+          errorMessage.includes('403')) {
+        throw new Error("⚠️ API Key Error: Your OpenRouter API key appears to be invalid or expired. Please verify your API key at https://openrouter.ai/keys and update your .env file.");
       }
       
       // Quota/billing errors
-      if (errorMessage.includes('quota') || errorMessage.includes('billing') || errorMessage.includes('exceeded') || errorMessage.includes('429')) {
-        throw new Error("⚠️ API Quota Exceeded: Your Gemini API usage limit has been reached. Please check your quota in Google AI Studio or wait for it to reset.");
+      if (errorMessage.includes('quota') || 
+          errorMessage.includes('billing') || 
+          errorMessage.includes('exceeded') || 
+          errorMessage.includes('429')) {
+        throw new Error("⚠️ API Quota Exceeded: Your OpenRouter API usage limit has been reached. Please check your quota at https://openrouter.ai/keys or wait for it to reset.");
       }
       
-      // Network/connectivity errors - enhanced handling
+      // Network/connectivity errors
       if (errorMessage.includes('failed to fetch') || 
           errorMessage.includes('network') || 
           errorMessage.includes('fetch') ||
           errorMessage.includes('cors') ||
           errorMessage.includes('connection')) {
         
-        // Try to provide more specific guidance
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         
         if (isLocalhost) {
-          throw new Error("⚠️ Network Connection Error: Unable to reach the Gemini API from your local development environment. This might be due to:\n\n1. Internet connectivity issues\n2. Firewall blocking the request\n3. CORS restrictions in development mode\n4. VPN or proxy interference\n\nTry:\n• Check your internet connection\n• Disable VPN/proxy temporarily\n• Restart your development server\n• Verify the API key is correct");
+          throw new Error("⚠️ Network Connection Error: Unable to reach the OpenRouter API from your local development environment. This might be due to:\n\n1. Internet connectivity issues\n2. Firewall blocking the request\n3. CORS restrictions in development mode\n4. VPN or proxy interference\n\nTry:\n• Check your internet connection\n• Disable VPN/proxy temporarily\n• Restart your development server\n• Verify the API key is correct");
         } else {
-          throw new Error("⚠️ Connection Error: Unable to connect to Gemini API. Please check your internet connection and try again. If the problem persists, the service might be temporarily unavailable.");
+          throw new Error("⚠️ Connection Error: Unable to connect to OpenRouter API. Please check your internet connection and try again. If the problem persists, the service might be temporarily unavailable.");
         }
       }
       
       // Permission errors
       if (errorMessage.includes('permission') || errorMessage.includes('forbidden')) {
-        throw new Error("⚠️ Permission Error: Your API key doesn't have permission to access Gemini API. Please ensure your API key is properly configured with the necessary permissions in Google AI Studio.");
+        throw new Error("⚠️ Permission Error: Your API key doesn't have permission to access OpenRouter API. Please ensure your API key is properly configured with the necessary permissions at https://openrouter.ai/keys.");
       }
       
       // Rate limiting
@@ -268,7 +292,7 @@ export async function generateAIResponse(
       }
     }
     
-    // Generic error fallback with more helpful information
+    // Generic error fallback
     throw new Error("⚠️ Technical Difficulty: I'm having trouble connecting to the AI service right now. This could be due to:\n\n• Network connectivity issues\n• API service temporarily unavailable\n• Configuration problems\n\nPlease try again in a moment. If the problem persists, check your API key configuration and internet connection.");
   }
 }

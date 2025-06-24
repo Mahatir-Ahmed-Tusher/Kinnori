@@ -125,7 +125,7 @@ kinnori/
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Mahatir-Ahmed-Tusher/Kinnori.git
    cd kinnori
    ```
 
@@ -239,5 +239,9 @@ If you encounter any issues:
 - Custom AI model training
 
 ---
+## Developed by
+
+Mahatir Ahmed Tusher
+### contact: mahatirtusher@gmail.com
 
 **Made with ❤️ for emotional well-being and human connection**
